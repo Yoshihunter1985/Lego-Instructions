@@ -197,17 +197,39 @@
   .pdf-viewer-wrap{
     background:rgba(244,239,226,0.95);
     border-radius:16px;
-    padding:10px;
+    padding:14px;
     box-shadow: var(--shadow);
   }
-  .pdf-viewer-wrap iframe{
+  .pdf-canvas-stage{
     width:100%;
-    height:calc(100vh - 220px);
     min-height:480px;
-    border:none;
-    border-radius:10px;
+    max-height:calc(100vh - 260px);
+    overflow:auto;
     background:#fff;
-    display:block;
+    border-radius:10px;
+    display:flex;
+    justify-content:center;
+    padding:10px 0;
+  }
+  .pdf-canvas-stage canvas{
+    max-width:100%;
+    box-shadow:0 2px 10px rgba(0,0,0,0.15);
+  }
+  .pdf-controls{
+    display:flex;align-items:center;justify-content:center;gap:14px;
+    margin-top:12px;
+  }
+  .pdf-controls button{
+    font-family:'LegoTitle',sans-serif;font-weight:700;font-size:20px;
+    width:48px;height:48px;border-radius:10px;border:none;cursor:pointer;
+    background:var(--blue);color:#fff;
+    box-shadow:0 4px 0 rgba(0,0,0,0.18);
+  }
+  .pdf-controls button:disabled{background:var(--line);color:var(--ink-soft);cursor:default;box-shadow:none;}
+  .pdf-controls button:active:not(:disabled){transform:translateY(3px);box-shadow:none;}
+  .pdf-page-label{
+    font-family:'LegoTitle',sans-serif;font-weight:600;font-size:15px;color:var(--ink);
+    min-width:90px;text-align:center;
   }
   .pdf-fallback{
     text-align:center;margin-top:10px;
@@ -376,6 +398,8 @@ async function renderCategory(folderEncoded){
   }
 }
 
+let pdfState = { doc:null, pageNum:1, rendering:false };
+
 function renderViewer(folderEncoded, pdfUrlEncoded){
   const pdfUrl = decodeURIComponent(pdfUrlEncoded);
   const folderName = decodeURIComponent(folderEncoded);
@@ -383,14 +407,66 @@ function renderViewer(folderEncoded, pdfUrlEncoded){
   crumbLabel.textContent = 'Instructions';
   document.getElementById('backBtn').textContent = '\u2190 ' + folderName;
 
-  // Google Docs Viewer renders the PDF inline without forcing a download.
-  const viewerSrc = `https://docs.google.com/viewer?embedded=true&url=${encodeURIComponent(pdfUrl)}`;
-
   content.innerHTML = `
     <div class="pdf-viewer-wrap">
-      <iframe src="${viewerSrc}" title="Instructions"></iframe>
+      <div class="pdf-canvas-stage" id="pdfStage">
+        <span class="state-msg pulse" style="border:none;background:none;">Opening instructions&hellip;</span>
+      </div>
+      <div class="pdf-controls">
+        <button id="pdfPrev" disabled>&larr;</button>
+        <span class="pdf-page-label" id="pdfPageLabel">&nbsp;</span>
+        <button id="pdfNext" disabled>&rarr;</button>
+      </div>
       <div class="pdf-fallback"><a href="${pdfUrl}" target="_blank" rel="noopener">Open original PDF instead</a></div>
     </div>`;
+
+  pdfState = { doc:null, pageNum:1, rendering:false };
+
+  pdfjsLib.getDocument(pdfUrl).promise.then(doc => {
+    pdfState.doc = doc;
+    pdfState.pageNum = 1;
+    renderPdfPage();
+  }).catch(err => {
+    document.getElementById('pdfStage').innerHTML =
+      `<span class="state-msg" style="border:none;background:none;">Couldn't load this PDF. Try "Open original PDF instead" below.</span>`;
+  });
+
+  document.getElementById('pdfPrev').onclick = () => {
+    if(pdfState.doc && pdfState.pageNum > 1){ pdfState.pageNum--; renderPdfPage(); }
+  };
+  document.getElementById('pdfNext').onclick = () => {
+    if(pdfState.doc && pdfState.pageNum < pdfState.doc.numPages){ pdfState.pageNum++; renderPdfPage(); }
+  };
+}
+
+function renderPdfPage(){
+  if(!pdfState.doc || pdfState.rendering) return;
+  pdfState.rendering = true;
+  const stage = document.getElementById('pdfStage');
+  const label = document.getElementById('pdfPageLabel');
+  const prevBtn = document.getElementById('pdfPrev');
+  const nextBtn = document.getElementById('pdfNext');
+
+  pdfState.doc.getPage(pdfState.pageNum).then(page => {
+    const containerWidth = stage.clientWidth - 20;
+    const baseViewport = page.getViewport({ scale: 1 });
+    const scale = Math.min(2.2, (containerWidth / baseViewport.width));
+    const viewport = page.getViewport({ scale });
+
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d');
+
+    return page.render({ canvasContext: ctx, viewport }).promise.then(() => {
+      stage.innerHTML = '';
+      stage.appendChild(canvas);
+      label.textContent = `Page ${pdfState.pageNum} / ${pdfState.doc.numPages}`;
+      prevBtn.disabled = pdfState.pageNum <= 1;
+      nextBtn.disabled = pdfState.pageNum >= pdfState.doc.numPages;
+      pdfState.rendering = false;
+    });
+  }).catch(() => { pdfState.rendering = false; });
 }
 
 function route(){
@@ -407,6 +483,10 @@ function route(){
 }
 window.addEventListener('hashchange', route);
 route();
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 </script>
 </body>
 </html>
