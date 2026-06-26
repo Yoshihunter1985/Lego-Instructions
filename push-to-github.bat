@@ -10,6 +10,10 @@ REM ============================================
 cd /d "%~dp0"
 
 echo.
+echo Syncing with GitHub first...
+git pull
+
+echo.
 echo Checking for changes...
 git add .
 
