@@ -10,12 +10,12 @@
 <style>
   @font-face{
     font-family:'LegoTitle';
-    src:url('https://raw.githubusercontent.com/Yoshihunter1985/Lego-Instructions/main/LEGO.ttf') format('truetype');
+    src:url('LEGO.ttf') format('truetype');
     font-display:swap;
   }
   @font-face{
     font-family:'LegoThick';
-    src:url('https://raw.githubusercontent.com/Yoshihunter1985/Lego-Instructions/main/Legothick.ttf') format('truetype');
+    src:url('Legothick.ttf') format('truetype');
     font-display:swap;
   }
   :root{
@@ -35,7 +35,7 @@
   body{
     margin:0;
     background-color:var(--bg);
-    background-image: url('https://raw.githubusercontent.com/Yoshihunter1985/Lego-Instructions/main/Lego%20dull%20background.png');
+    background-image: url('Lego%20dull%20background.png');
     background-size: 480px;
     background-repeat: repeat;
     background-attachment: fixed;
@@ -275,7 +275,7 @@ const GH_REPO = "Lego-Instructions";
 const GH_BRANCH = "main";
 
 const API_ROOT = `https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents`;
-const RAW_ROOT = `https://raw.githubusercontent.com/${GH_USER}/${GH_REPO}/${GH_BRANCH}`;
+const RAW_ROOT = '.'; // files are served from this site itself (GitHub Pages), same origin as the app
 
 const BRICK_COLORS = ["#D6321D","#1768AC","#1C8A5A","#F4B400","#8E44AD","#E07B1A"];
 function colorFor(name){
@@ -429,7 +429,21 @@ function renderViewer(folderEncoded, pdfUrlEncoded){
 
   pdfState = { doc:null, pageNum:1, rendering:false };
 
-  pdfjsLib.getDocument(pdfUrl).promise.then(doc => {
+  const task = pdfjsLib.getDocument({
+    url: pdfUrl,
+    rangeChunkSize: 1048576,   // fetch in 1MB pieces
+    disableAutoFetch: true,    // only download pages as they're needed
+    disableStream: false
+  });
+  task.onProgress = p => {
+    const stage = document.getElementById('pdfStage');
+    const msg = stage && stage.querySelector('.state-msg');
+    if(!msg || pdfState.doc) return;
+    msg.textContent = p.total
+      ? `Opening instructions\u2026 ${Math.min(99, Math.round(p.loaded / p.total * 100))}%`
+      : `Opening instructions\u2026 ${(p.loaded / 1048576).toFixed(1)} MB`;
+  };
+  task.promise.then(doc => {
     pdfState.doc = doc;
     pdfState.pageNum = 1;
     renderPdfPage();
@@ -464,9 +478,9 @@ function renderPdfPage(){
     const cssH = Math.floor(base.height * fit);
 
     // Render at higher pixel density so it stays sharp (and when pinch-zoomed)
-    const dpr = Math.min(window.devicePixelRatio || 1, 3);
-    let renderScale = fit * dpr * 1.5;
-    const maxPx = 4096;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    let renderScale = fit * dpr * 1.25;
+    const maxPx = 3000;
     renderScale = Math.min(renderScale, maxPx / base.width, maxPx / base.height);
     const viewport = page.getViewport({ scale: renderScale });
 
